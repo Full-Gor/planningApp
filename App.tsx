@@ -7,11 +7,17 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
+import { EventsScreen } from './src/screens/EventsScreen';
+import { useEventStore } from './src/store/eventStore';
+import { getColors } from './src/theme/colors';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 const TabNavigator = () => {
+  const { isDarkMode } = useEventStore();
+  const colors = getColors(isDarkMode);
+  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -32,16 +38,16 @@ const TabNavigator = () => {
 
           return <Ionicons name={iconName as any} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#4285F4',
-        tabBarInactiveTintColor: '#6c757d',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: '#ffffff',
+          backgroundColor: colors.card,
           borderTopWidth: 1,
-          borderTopColor: '#e9ecef',
-          paddingBottom: 15,
+          borderTopColor: colors.border,
+          paddingBottom: 25,
           paddingTop: 5,
-          height: 60,
-          marginBottom: -10,
+          height: 80,
+          marginBottom: 25,
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -51,6 +57,7 @@ const TabNavigator = () => {
       })}
     >
       <Tab.Screen name="Accueil" component={HomeScreen} />
+      <Tab.Screen name="Événements" component={EventsScreen} />
       <Tab.Screen name="Recherche" component={SearchScreen} />
       <Tab.Screen name="Statistiques" component={StatsScreen} />
       <Tab.Screen name="Paramètres" component={SettingsScreen} />

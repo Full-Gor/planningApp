@@ -6,9 +6,9 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -20,10 +20,21 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.cyber.planningapp",
+      
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/icon.png"
+    },
+    "extra": {
+      "supabaseUrl": "https://mmerbpqrhyxldshgvmme.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1tZXJicHFyaHl4bGRzaGd2bW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MjQzMTIsImV4cCI6MjA3MDIwMDMxMn0.VWHKvA3Oy1a6fYtS5SXN2vuMUbKlnMmbbsCn94ge6j8",
+      "openWeatherApiKey": "f8bd5a2932226708ac1c0392a0c1c2aa",
+      "eas": {
+        "projectId": "bd35a87d-4a35-4a8e-a6ae-c58468b8e024"
+      }
+    },
+    "owner": "arnaud93500"
   }
 }

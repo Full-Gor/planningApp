@@ -17,6 +17,7 @@ import { useEventStore } from '../store/eventStore';
 import { Event, ViewMode } from '../types/Event';
 import { NotificationService } from '../services/NotificationService';
 import Modal from 'react-native-modal';
+import { getColors } from '../theme/colors';
 
 export const HomeScreen: React.FC = () => {
   const {
@@ -25,6 +26,8 @@ export const HomeScreen: React.FC = () => {
     selectedDate,
     loadEvents,
     isLoading,
+    isDarkMode,
+    triggerSelectedDateAnimation,
   } = useEventStore();
 
   const [showEventForm, setShowEventForm] = useState(false);
@@ -63,7 +66,11 @@ export const HomeScreen: React.FC = () => {
 
   const handleAddEvent = () => {
     setSelectedEvent(undefined);
-    setShowEventForm(true);
+    // Déclenche l'animation du jour sélectionné avant d'ouvrir le formulaire
+    try { triggerSelectedDateAnimation(); } catch {}
+    setTimeout(() => {
+      setShowEventForm(true);
+    }, 800); // laisse le temps de voir l'animation (600ms) + marge
   };
 
   const handleSaveEvent = (event: Event) => {
@@ -91,36 +98,38 @@ export const HomeScreen: React.FC = () => {
     return viewMode?.icon || 'calendar-outline';
   };
 
+  const colors = getColors(isDarkMode);
+  
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Chargement...</Text>
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Chargement...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity
-          style={styles.viewButton}
+          style={[styles.viewButton, { backgroundColor: colors.accentLight }]}
           onPress={() => setShowViewPicker(true)}
         >
-          <Ionicons name={getCurrentViewIcon() as any} size={20} color="#4285F4" />
-          <Text style={styles.viewButtonText}>{getCurrentViewLabel()}</Text>
-          <Ionicons name="chevron-down" size={16} color="#6c757d" />
+          <Ionicons name={getCurrentViewIcon() as any} size={20} color={colors.primary} />
+          <Text style={[styles.viewButtonText, { color: colors.text }]}>{getCurrentViewLabel()}</Text>
+          <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>Planning</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Planning</Text>
 
-        <TouchableOpacity style={styles.addButton} onPress={handleAddEvent}>
-          <Ionicons name="add" size={24} color="#ffffff" />
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.primary }]} onPress={handleAddEvent}>
+          <Ionicons name="add" size={24} color={colors.selectedText} />
         </TouchableOpacity>
       </View>
 
@@ -191,7 +200,6 @@ export const HomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
   loadingContainer: {
     flex: 1,
@@ -200,7 +208,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#6c757d',
   },
   header: {
     flexDirection: 'row',
@@ -208,32 +215,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingTop: Platform.OS === 'android' ? Math.max((Constants.statusBarHeight || 0) - 8, 0) : 0,
+    paddingTop: Platform.OS === 'android' ? Math.max((Constants.statusBarHeight || 0) + 12, 0) : 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-    backgroundColor: '#ffffff',
   },
   viewButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   viewButtonText: {
     fontSize: 14,
-    color: '#2d4150',
     marginHorizontal: 6,
     fontWeight: '500',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2d4150',
   },
   addButton: {
-    backgroundColor: '#4285F4',
     width: 40,
     height: 40,
     borderRadius: 20,

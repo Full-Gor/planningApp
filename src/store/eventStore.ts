@@ -1,20 +1,29 @@
 import { create } from 'zustand';
 import { Event, Calendar, ViewMode, EventCategory } from '../types/Event';
+import { SupabaseService } from '../services/SupabaseService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface EventStore {
   events: Event[];
+  userId?: string;
   calendars: Calendar[];
   categories: EventCategory[];
   currentView: ViewMode;
   selectedDate: Date;
   isLoading: boolean;
   searchQuery: string;
+  selectedDateAnimationTick: number;
+  isDarkMode: boolean;
   
   // Actions
   addEvent: (event: Event) => void;
   updateEvent: (id: string, event: Partial<Event>) => void;
   deleteEvent: (id: string) => void;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  syncToCloud: () => Promise<void>;
+  fetchFromCloud: () => Promise<void>;
   setCurrentView: (view: ViewMode) => void;
   setSelectedDate: (date: Date) => void;
   setSearchQuery: (query: string) => void;
@@ -29,10 +38,13 @@ interface EventStore {
   addCategory: (category: EventCategory) => void;
   updateCategory: (id: string, category: Partial<EventCategory>) => void;
   deleteCategory: (id: string) => void;
+  triggerSelectedDateAnimation: () => void;
+  toggleDarkMode: () => void;
 }
 
 export const useEventStore = create<EventStore>((set, get) => ({
   events: [],
+  userId: undefined,
   calendars: [
     {
       id: '1',
@@ -73,12 +85,15 @@ export const useEventStore = create<EventStore>((set, get) => ({
   selectedDate: new Date(),
   isLoading: false,
   searchQuery: '',
+  selectedDateAnimationTick: 0,
+  isDarkMode: false,
 
   addEvent: (event) => {
     set((state) => ({
       events: [...state.events, event],
     }));
     get().saveEvents();
+    get().syncToCloud().catch(() => {});
   },
 
   updateEvent: (id, eventUpdate) => {
@@ -88,6 +103,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
       ),
     }));
     get().saveEvents();
+    get().syncToCloud().catch(() => {});
   },
 
   deleteEvent: (id) => {
@@ -95,6 +111,7 @@ export const useEventStore = create<EventStore>((set, get) => ({
       events: state.events.filter((event) => event.id !== id),
     }));
     get().saveEvents();
+    get().syncToCloud().catch(() => {});
   },
 
   setCurrentView: (view) => {
@@ -109,12 +126,22 @@ export const useEventStore = create<EventStore>((set, get) => ({
     set({ searchQuery: query });
   },
 
+  triggerSelectedDateAnimation: () => {
+    set({ selectedDateAnimationTick: Date.now() });
+  },
+
+  toggleDarkMode: () => {
+    set((state) => ({ isDarkMode: !state.isDarkMode }));
+    get().saveEvents();
+  },
+
   loadEvents: async () => {
     try {
       set({ isLoading: true });
       const storedEvents = await AsyncStorage.getItem('events');
       const storedCalendars = await AsyncStorage.getItem('calendars');
       const storedCategories = await AsyncStorage.getItem('categories');
+      const storedUserId = await AsyncStorage.getItem('userId');
       
       if (storedEvents) {
         const events = JSON.parse(storedEvents).map((event: any) => ({
@@ -134,6 +161,16 @@ export const useEventStore = create<EventStore>((set, get) => ({
       if (storedCategories) {
         set({ categories: JSON.parse(storedCategories) });
       }
+      if (storedUserId) {
+        set({ userId: storedUserId });
+        await get().fetchFromCloud().catch(() => {});
+      }
+      
+      // Charger le mode sombre
+      const storedDarkMode = await AsyncStorage.getItem('isDarkMode');
+      if (storedDarkMode) {
+        set({ isDarkMode: JSON.parse(storedDarkMode) });
+      }
     } catch (error) {
       console.error('Error loading events:', error);
     } finally {
@@ -143,13 +180,56 @@ export const useEventStore = create<EventStore>((set, get) => ({
 
   saveEvents: async () => {
     try {
-      const { events, calendars, categories } = get();
+      const { events, calendars, categories, isDarkMode } = get();
       await AsyncStorage.setItem('events', JSON.stringify(events));
       await AsyncStorage.setItem('calendars', JSON.stringify(calendars));
       await AsyncStorage.setItem('categories', JSON.stringify(categories));
+      await AsyncStorage.setItem('isDarkMode', JSON.stringify(isDarkMode));
     } catch (error) {
       console.error('Error saving events:', error);
     }
+  },
+
+  signIn: async (email: string, password: string) => {
+    const client = SupabaseService.getClient();
+    if (!client) throw new Error('Supabase non configuré');
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    const uid = data.user?.id as string;
+    set({ userId: uid });
+    await AsyncStorage.setItem('userId', uid);
+    await get().fetchFromCloud();
+  },
+
+  signUp: async (email: string, password: string) => {
+    const client = SupabaseService.getClient();
+    if (!client) throw new Error('Supabase non configuré');
+    const { data, error } = await client.auth.signUp({ email, password });
+    if (error) throw error;
+    const uid = data.user?.id as string;
+    set({ userId: uid });
+    await AsyncStorage.setItem('userId', uid);
+  },
+
+  signOut: async () => {
+    const client = SupabaseService.getClient();
+    if (client) await client.auth.signOut();
+    set({ userId: undefined });
+    await AsyncStorage.removeItem('userId');
+  },
+
+  syncToCloud: async () => {
+    const { userId, events } = get();
+    if (!userId) return;
+    await SupabaseService.syncEvents(userId, events);
+  },
+
+  fetchFromCloud: async () => {
+    const { userId } = get();
+    if (!userId) return;
+    const cloudEvents = await SupabaseService.fetchEvents(userId);
+    set({ events: cloudEvents });
+    await get().saveEvents();
   },
 
   getEventsByDate: (date) => {

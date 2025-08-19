@@ -8,9 +8,13 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Image,
+  Platform,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { Event, EventCategory, ReminderSettings, RecurrenceSettings } from '../../types/Event';
 import { useEventStore } from '../../store/eventStore';
 import { LocationService } from '../../services/LocationService';
@@ -42,6 +46,7 @@ export const EventForm: React.FC<EventFormProps> = ({
   const [isAllDay, setIsAllDay] = useState(event?.isAllDay || false);
   const [isPrivate, setIsPrivate] = useState(event?.isPrivate || false);
   const [tags, setTags] = useState(event?.tags?.join(', ') || '');
+  const [attachments, setAttachments] = useState<string[]>(event?.attachments || []);
   const [reminder, setReminder] = useState<ReminderSettings>(
     event?.reminder || {
       enabled: false,
@@ -62,10 +67,18 @@ export const EventForm: React.FC<EventFormProps> = ({
   const [showReminderSettings, setShowReminderSettings] = useState(false);
   const [showRecurrenceSettings, setShowRecurrenceSettings] = useState(false);
 
-  const colors = [
-    '#4285F4', '#DB4437', '#F4B400', '#0F9D58',
-    '#9C27B0', '#FF5722', '#795548', '#607D8B',
+  const colorPalettes = [
+    { name: 'Classique', colors: ['#4285F4', '#DB4437', '#F4B400', '#0F9D58'] },
+    { name: 'Pastel', colors: ['#A5D8FF', '#FFC9DE', '#FFE3A3', '#B2F2BB'] },
+    { name: 'Sombre', colors: ['#4C6EF5', '#F03E3E', '#FAB005', '#2F9E44'] },
   ];
+  const eventIcons = ['calendar', 'people', 'briefcase', 'school', 'airplane', 'fitness', 'restaurant', 'heart'];
+  const themes = [
+    { id: 'default', name: 'Par défaut', bg: '#ffffff', text: '#2d4150' },
+    { id: 'dark', name: 'Sombre', bg: '#1f2937', text: '#e5e7eb' },
+    { id: 'sunset', name: 'Coucher de soleil', bg: '#FFF3E0', text: '#7C3A00' },
+  ];
+  const [selectedThemeId, setSelectedThemeId] = useState('default');
 
   useEffect(() => {
     if (isAllDay) {
@@ -99,6 +112,7 @@ export const EventForm: React.FC<EventFormProps> = ({
       location: location.trim() || undefined,
       category: selectedCategory,
       color: selectedCategory.color,
+      // on pourrait stocker le thème choisi dans tags ou un champ dédié si on l’ajoute au type
       isAllDay,
       reminder: reminder.enabled ? reminder : undefined,
       recurrence,
@@ -108,7 +122,7 @@ export const EventForm: React.FC<EventFormProps> = ({
       updatedAt: new Date(),
       isPrivate,
       tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0),
-      attachments: event?.attachments || [],
+      attachments,
     };
 
     // Ajouter les informations météo si l'événement a un lieu
@@ -132,11 +146,11 @@ export const EventForm: React.FC<EventFormProps> = ({
 
     if (event) {
       updateEvent(event.id, eventData);
+      onSave(eventData);
     } else {
       addEvent(eventData);
+      onSave(eventData);
     }
-
-    onSave(eventData);
   };
 
   const getCurrentLocation = async () => {
@@ -420,6 +434,40 @@ export const EventForm: React.FC<EventFormProps> = ({
           {showCategoryPicker && renderCategoryPicker()}
         </View>
 
+        {/* Couleurs, icônes et thème */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Couleurs</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingVertical: 4 }}>
+            {colorPalettes.flatMap(p => p.colors).map((c) => (
+              <TouchableOpacity key={c} onPress={() => setSelectedCategory({ ...selectedCategory, color: c })} style={{ marginRight: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c, borderWidth: 1, borderColor: '#e9ecef' }} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Icône</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingVertical: 4 }}>
+            {eventIcons.map((ic) => (
+              <TouchableOpacity key={ic} onPress={() => setSelectedCategory({ ...selectedCategory, icon: ic })} style={{ marginRight: 12, padding: 8, borderWidth: 1, borderColor: '#e9ecef', borderRadius: 8 }}>
+                <Ionicons name={ic as any} size={20} color={selectedCategory.color} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Thème de l’évènement</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingVertical: 4 }}>
+            {themes.map((t) => (
+              <TouchableOpacity key={t.id} onPress={() => setSelectedThemeId(t.id)} style={{ marginRight: 12, padding: 8, borderWidth: 1, borderColor: selectedThemeId === t.id ? '#4285F4' : '#e9ecef', borderRadius: 8, backgroundColor: t.bg }}>
+                <Text style={{ color: t.text }}>{t.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Tags</Text>
           <TextInput
@@ -429,6 +477,77 @@ export const EventForm: React.FC<EventFormProps> = ({
             placeholder="Tags séparés par des virgules"
             placeholderTextColor="#6c757d"
           />
+        </View>
+
+        {/* Pièces jointes */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Pièces jointes</Text>
+          <View style={styles.attachActionsRow}>
+            <TouchableOpacity
+              style={styles.attachButton}
+              onPress={async () => {
+                try {
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsMultipleSelection: true,
+                    quality: 0.8,
+                  });
+                  if (!result.canceled) {
+                    const uris = (result.assets || []).map(a => a.uri).filter(Boolean) as string[];
+                    setAttachments(prev => [...prev, ...uris]);
+                  }
+                } catch {}
+              }}
+            >
+              <Ionicons name="image" size={18} color="#4285F4" />
+              <Text style={styles.attachButtonText}>Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.attachButton}
+              onPress={async () => {
+                try {
+                  const res = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
+                  if ((res as any).assets && (res as any).assets.length > 0) {
+                    const uris = (res as any).assets.map((a: any) => a.uri).filter(Boolean) as string[];
+                    setAttachments(prev => [...prev, ...uris]);
+                  } else if ('uri' in (res as any) && (res as any).uri) {
+                    setAttachments(prev => [...prev, (res as any).uri]);
+                  }
+                } catch {}
+              }}
+            >
+              <Ionicons name="document" size={18} color="#4285F4" />
+              <Text style={styles.attachButtonText}>Fichier</Text>
+            </TouchableOpacity>
+          </View>
+
+          {attachments.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.attachmentsList}>
+              {attachments.map((uri, idx) => {
+                const lower = (uri || '').toLowerCase();
+                const isImg = lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') || lower.endsWith('.gif') || lower.endsWith('.webp');
+                return (
+                  <View key={(uri || '') + idx} style={styles.attachmentItem}>
+                    {isImg ? (
+                      <Image source={{ uri }} style={styles.attachmentThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.attachmentFile}>
+                        <Ionicons name="document" size={20} color="#6c757d" />
+                        <Text numberOfLines={1} style={styles.attachmentName}>{(uri || '').split('/').pop() || 'fichier'}</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={styles.removeAttachment}
+                      onPress={() => setAttachments(prev => prev.filter((u, i) => i !== idx))}
+                    >
+                      <Ionicons name="close" size={14} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
         </View>
 
         <View style={styles.switchRow}>
@@ -693,6 +812,68 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#2d4150',
     marginLeft: 8,
+  },
+  attachmentsList: {
+    marginTop: 8,
+  },
+  attachmentItem: {
+    width: 72,
+    height: 72,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    marginRight: 8,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#ffffff',
+  },
+  attachmentThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  removeAttachment: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#DB4437',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentFile: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+  },
+  attachmentName: {
+    fontSize: 10,
+    color: '#6c757d',
+    marginTop: 2,
+    textAlign: 'center',
+    width: 64,
+  },
+  attachActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  attachButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+    backgroundColor: '#ffffff',
+  },
+  attachButtonText: {
+    marginLeft: 6,
+    color: '#2d4150',
   },
   settingsContainer: {
     backgroundColor: '#f8f9fa',

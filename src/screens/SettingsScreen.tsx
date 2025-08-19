@@ -12,15 +12,30 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useEventStore } from '../store/eventStore';
+import { SupabaseService } from '../services/SupabaseService';
 import { ExportService } from '../services/ExportService';
 import { NotificationService } from '../services/NotificationService';
+import { getColors } from '../theme/colors';
 
 export const SettingsScreen: React.FC = () => {
-  const { events, calendars, categories } = useEventStore();
+  const { 
+    events, 
+    calendars, 
+    categories, 
+    userId, 
+    isDarkMode,
+    signIn, 
+    signUp, 
+    signOut, 
+    syncToCloud, 
+    fetchFromCloud,
+    toggleDarkMode
+  } = useEventStore();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
-  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
   const [weekStartsOnMonday, setWeekStartsOnMonday] = useState(true);
   const [showWeekNumbers, setShowWeekNumbers] = useState(false);
 
@@ -77,41 +92,43 @@ export const SettingsScreen: React.FC = () => {
     rightComponent?: React.ReactNode
   ) => (
     <TouchableOpacity
-      style={styles.settingItem}
+      style={[styles.settingItem, { borderBottomColor: colors.borderLight }]}
       onPress={onPress}
       disabled={!onPress}
     >
-      <View style={styles.settingIcon}>
-        <Ionicons name={icon as any} size={24} color="#4285F4" />
+      <View style={[styles.settingIcon, { backgroundColor: colors.accent }]}>
+        <Ionicons name={icon as any} size={24} color={colors.primary} />
       </View>
       <View style={styles.settingContent}>
-        <Text style={styles.settingTitle}>{title}</Text>
-        <Text style={styles.settingSubtitle}>{subtitle}</Text>
+        <Text style={[styles.settingTitle, { color: colors.text }]}>{title}</Text>
+        <Text style={[styles.settingSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
       </View>
       {rightComponent || (onPress && (
-        <Ionicons name="chevron-forward" size={20} color="#6c757d" />
+        <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
       ))}
     </TouchableOpacity>
   );
 
   const renderSection = (title: string, children: React.ReactNode) => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionContent}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+      <View style={[styles.sectionContent, { backgroundColor: colors.card, shadowColor: colors.text }]}>
         {children}
       </View>
     </View>
   );
 
+  const colors = getColors(isDarkMode);
+  
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.background} />
       
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Paramètres</Text>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Paramètres</Text>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={[styles.content, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
         {/* Notifications */}
         {renderSection('Notifications', (
           <>
@@ -165,8 +182,8 @@ export const SettingsScreen: React.FC = () => {
               'moon',
               undefined,
               <Switch
-                value={darkModeEnabled}
-                onValueChange={setDarkModeEnabled}
+                value={isDarkMode}
+                onValueChange={toggleDarkMode}
               />
             )}
             {renderSettingItem(
@@ -188,6 +205,45 @@ export const SettingsScreen: React.FC = () => {
                 value={showWeekNumbers}
                 onValueChange={setShowWeekNumbers}
               />
+            )}
+          </>
+        ))}
+
+        {/* Compte & Synchro */}
+        {renderSection('Compte', (
+          <>
+            {!userId ? (
+              <>
+                {renderSettingItem('Connexion', 'Se connecter à un compte', 'log-in', async () => {
+                  try {
+                    await signIn(email || 'demo@example.com', password || 'password-demo');
+                    Alert.alert('Connecté', 'Connexion réussie');
+                  } catch (e) {
+                    Alert.alert('Erreur', 'Connexion échouée');
+                  }
+                })}
+                {renderSettingItem('Inscription', 'Créer un compte', 'person-add', async () => {
+                  try {
+                    await signUp(email || 'demo@example.com', password || 'password-demo');
+                    Alert.alert('Créé', 'Compte créé, vérifiez vos emails');
+                  } catch (e) {
+                    Alert.alert('Erreur', 'Inscription échouée');
+                  }
+                })}
+              </>
+            ) : (
+              <>
+                {renderSettingItem('Synchroniser maintenant', 'Sauvegarder sur le cloud', 'cloud-upload', async () => {
+                  try { await syncToCloud(); Alert.alert('Succès', 'Synchronisation réussie'); } catch { Alert.alert('Erreur', 'Échec de la synchro'); }
+                })}
+                {renderSettingItem('Récupérer du cloud', 'Charger vos événements', 'cloud-download', async () => {
+                  try { await fetchFromCloud(); Alert.alert('Succès', 'Récupération réussie'); } catch { Alert.alert('Erreur', 'Échec de la récupération'); }
+                })}
+                {renderSettingItem('Déconnexion', 'Se déconnecter du compte', 'log-out', async () => {
+                  await signOut();
+                  Alert.alert('Déconnecté', 'Vous êtes déconnecté');
+                })}
+              </>
             )}
           </>
         ))}
@@ -281,19 +337,15 @@ export const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
   },
   header: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#ffffff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2d4150',
     textAlign: 'center',
   },
   content: {
@@ -306,14 +358,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2d4150',
     marginBottom: 12,
     marginLeft: 4,
   },
   sectionContent: {
-    backgroundColor: '#ffffff',
     borderRadius: 12,
-    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 1,
@@ -327,13 +376,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f3f4',
   },
   settingIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#e3f2fd',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -344,20 +391,16 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#2d4150',
     marginBottom: 2,
   },
   settingSubtitle: {
     fontSize: 12,
-    color: '#6c757d',
   },
   statValue: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#4285F4',
   },
   versionText: {
     fontSize: 14,
-    color: '#6c757d',
   },
 });

@@ -1,6 +1,7 @@
 import { WeatherInfo } from '../types/Event';
+import Constants from 'expo-constants';
 
-const WEATHER_API_KEY = 'your-weather-api-key'; // Remplacez par votre clé API
+const WEATHER_API_KEY = (Constants as any).expoConfig?.extra?.openWeatherApiKey || (Constants as any).manifest?.extra?.openWeatherApiKey || 'your-weather-api-key';
 
 export class WeatherService {
   static async getWeatherForLocation(
@@ -29,6 +30,26 @@ export class WeatherService {
       };
     } catch (error) {
       console.error('Erreur météo:', error);
+      return null;
+    }
+  }
+
+  static async getWeatherForParis(): Promise<WeatherInfo | null> {
+    try {
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=Paris,FR&appid=${WEATHER_API_KEY}&units=metric&lang=fr`
+      );
+      if (!response.ok) throw new Error('Erreur météo Paris');
+      const data = await response.json();
+      return {
+        temperature: Math.round(data.main.temp),
+        condition: data.weather[0].description,
+        icon: data.weather[0].icon,
+        humidity: data.main.humidity,
+        windSpeed: data.wind.speed,
+      };
+    } catch (e) {
+      console.error('Erreur météo Paris:', e);
       return null;
     }
   }

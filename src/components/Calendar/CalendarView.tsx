@@ -13,6 +13,8 @@ import { Event, ViewMode } from '../../types/Event';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSequence } from 'react-native-reanimated';
+import { getColors } from '../../theme/colors';
 
 const { width } = Dimensions.get('window');
 
@@ -32,9 +34,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     setSelectedDate,
     getEventsByDate,
     getEventsByDateRange,
+    selectedDateAnimationTick,
+    isDarkMode,
   } = useEventStore();
 
   const [markedDates, setMarkedDates] = useState<any>({});
+  const colors = getColors(isDarkMode);
 
   useEffect(() => {
     updateMarkedDates();
@@ -58,16 +63,31 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
     if (marked[selectedDateKey]) {
       marked[selectedDateKey].selected = true;
-      marked[selectedDateKey].selectedColor = '#4285F4';
+      marked[selectedDateKey].selectedColor = colors.selected;
     } else {
       marked[selectedDateKey] = {
         selected: true,
-        selectedColor: '#4285F4',
+        selectedColor: colors.selected,
       };
     }
 
     setMarkedDates(marked);
   };
+
+  // Animation 360° pour le jour sélectionné
+  const rotationDeg = useSharedValue(0);
+  useEffect(() => {
+    if (!selectedDateAnimationTick) return;
+    rotationDeg.value = 0;
+    rotationDeg.value = withSequence(withTiming(360, { duration: 600 }));
+  }, [selectedDateAnimationTick]);
+
+  const animatedSelectedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 1000 },
+      { rotateY: `${rotationDeg.value}deg` },
+    ],
+  }));
 
   const renderMonthView = () => (
     <Calendar
@@ -77,23 +97,64 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         setSelectedDate(date);
         onDatePress(date);
       }}
-      markingType="multi-dot"
-      markedDates={markedDates}
+      dayComponent={({ date, state, marking }) => {
+        const dateObj = (date as any)?.timestamp ? new Date((date as any).timestamp) : new Date((date as any).dateString);
+        const isSelected = format(dateObj, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
+        const Wrapper = isSelected ? Animated.View : View;
+        return (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              setSelectedDate(dateObj);
+              onDatePress(dateObj);
+            }}
+            style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 2 }}
+          >
+            <Wrapper style={isSelected ? animatedSelectedStyle : undefined}>
+                                <View style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isSelected ? colors.selected : 'transparent',
+                  }}>
+                    <Text style={{
+                      color: isSelected ? colors.selectedText : state === 'disabled' ? colors.textDisabled : colors.text,
+                      fontWeight: '600',
+                    }}>
+                      {(date as any).day}
+                    </Text>
+                  </View>
+            </Wrapper>
+            {!!marking?.dots?.length && (
+              <View style={{ flexDirection: 'row', marginTop: 2, justifyContent: 'center' }}>
+                {marking.dots.slice(0, 3).map((d: any, idx: number) => (
+                  <View key={idx} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: d.color, marginHorizontal: 1 }} />
+                ))}
+                {marking.dots.length > 3 && (
+                  <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#999', marginHorizontal: 1 }} />
+                )}
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      }}
       theme={{
-        backgroundColor: '#ffffff',
-        calendarBackground: '#ffffff',
-        textSectionTitleColor: '#b6c1cd',
-        selectedDayBackgroundColor: '#4285F4',
-        selectedDayTextColor: '#ffffff',
-        todayTextColor: '#4285F4',
-        dayTextColor: '#2d4150',
-        textDisabledColor: '#d9e1e8',
-        dotColor: '#00adf5',
-        selectedDotColor: '#ffffff',
-        arrowColor: '#4285F4',
-        disabledArrowColor: '#d9e1e8',
-        monthTextColor: '#2d4150',
-        indicatorColor: '#4285F4',
+        backgroundColor: colors.background,
+        calendarBackground: colors.background,
+        textSectionTitleColor: colors.textSecondary,
+        selectedDayBackgroundColor: colors.selected,
+        selectedDayTextColor: colors.selectedText,
+        todayTextColor: colors.today,
+        dayTextColor: colors.text,
+        textDisabledColor: colors.textDisabled,
+        dotColor: colors.eventDot,
+        selectedDotColor: colors.eventSelectedDot,
+        arrowColor: colors.primary,
+        disabledArrowColor: colors.textDisabled,
+        monthTextColor: colors.text,
+        indicatorColor: colors.primary,
         textDayFontFamily: 'System',
         textMonthFontFamily: 'System',
         textDayHeaderFontFamily: 'System',
@@ -104,10 +165,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         textMonthFontSize: 16,
         textDayHeaderFontSize: 13,
       }}
+      style={{ backgroundColor: colors.background }}
       firstDay={1}
       hideExtraDays={true}
       showWeekNumbers={false}
       enableSwipeMonths={true}
+      markingType="multi-dot"
+      markedDates={markedDates}
     />
   );
 
@@ -118,34 +182,69 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const weekEvents = getEventsByDateRange(weekStart, weekEnd);
 
     return (
-      <View style={styles.weekView}>
-        <View style={styles.weekHeader}>
-          {weekDays.map((day, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.weekDay,
-                format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') && styles.selectedWeekDay,
-              ]}
-              onPress={() => {
-                setSelectedDate(day);
-                onDatePress(day);
-              }}
-            >
-              <Text style={styles.weekDayName}>
-                {format(day, 'EEE', { locale: fr })}
-              </Text>
-              <Text style={[
-                styles.weekDayNumber,
-                format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') && styles.selectedWeekDayNumber,
-              ]}>
-                {format(day, 'd')}
-              </Text>
-            </TouchableOpacity>
-          ))}
+      <View style={[styles.weekView, { backgroundColor: colors.background }]}>
+        <View style={[styles.weekHeader, { backgroundColor: colors.accentLight, borderBottomColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.weekNavButton, { backgroundColor: colors.card }]}
+            onPress={() => {
+              const prevWeek = addDays(selectedDate, -7);
+              setSelectedDate(prevWeek);
+            }}
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.primary} />
+          </TouchableOpacity>
+
+          <View style={styles.weekDaysContainer}>
+            {weekDays.map((day, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.weekDay,
+                  format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') && styles.selectedWeekDay,
+                ]}
+                onPress={() => {
+                  setSelectedDate(day);
+                  onDatePress(day);
+                }}
+              >
+                <Text style={[styles.weekDayName, { color: colors.textSecondary }]}>
+                  {format(day, 'EEE', { locale: fr })}
+                </Text>
+                <Animated.View style={
+                  format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') ? animatedSelectedStyle : undefined
+                }>
+                  <View style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') ? colors.selected : 'transparent',
+                  }}>
+                    <Text style={[
+                      styles.weekDayNumber,
+                      { color: format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd') ? colors.selectedText : colors.text },
+                    ]}>
+                      {format(day, 'd')}
+                    </Text>
+                  </View>
+                </Animated.View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.weekNavButton, { backgroundColor: colors.card }]}
+            onPress={() => {
+              const nextWeek = addDays(selectedDate, 7);
+              setSelectedDate(nextWeek);
+            }}
+          >
+            <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+          </TouchableOpacity>
         </View>
         
-        <ScrollView style={styles.weekEventsContainer}>
+        <ScrollView style={[styles.weekEventsContainer, { backgroundColor: colors.background }]}>
           {weekEvents.map((event, index) => (
             <TouchableOpacity
               key={event.id}
@@ -171,17 +270,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const hours = Array.from({ length: 24 }, (_, i) => i);
 
     return (
-      <View style={styles.dayView}>
-        <View style={styles.dayHeader}>
-          <Text style={styles.dayTitle}>
+      <View style={[styles.dayView, { backgroundColor: colors.background }]}>
+        <View style={[styles.dayHeader, { backgroundColor: colors.accentLight, borderBottomColor: colors.border }]}>
+          <Text style={[styles.dayTitle, { color: colors.text }]}>
             {format(selectedDate, 'EEEE d MMMM yyyy', { locale: fr })}
           </Text>
         </View>
         
-        <ScrollView style={styles.dayEventsContainer}>
+        <ScrollView style={[styles.dayEventsContainer, { backgroundColor: colors.background }]}>
           {hours.map(hour => (
-            <View key={hour} style={styles.hourSlot}>
-              <Text style={styles.hourLabel}>{hour.toString().padStart(2, '0')}:00</Text>
+            <View key={hour} style={[styles.hourSlot, { borderBottomColor: colors.borderLight }]}>
+              <Text style={[styles.hourLabel, { color: colors.textSecondary }]}>{hour.toString().padStart(2, '0')}:00</Text>
               <View style={styles.hourContent}>
                 {dayEvents
                   .filter(event => event.startDate.getHours() === hour)
@@ -191,13 +290,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       style={[styles.dayEvent, { backgroundColor: event.color + '20', borderLeftColor: event.color }]}
                       onPress={() => onEventPress(event)}
                     >
-                      <Text style={styles.dayEventTitle}>{event.title}</Text>
-                      <Text style={styles.dayEventTime}>
-                        {format(event.startDate, 'HH:mm')} - {format(event.endDate, 'HH:mm')}
-                      </Text>
-                      {event.location && (
-                        <Text style={styles.dayEventLocation}>{event.location}</Text>
-                      )}
+                              <Text style={[styles.dayEventTitle, { color: colors.text }]}>{event.title}</Text>
+        <Text style={[styles.dayEventTime, { color: colors.textSecondary }]}>
+          {format(event.startDate, 'HH:mm')} - {format(event.endDate, 'HH:mm')}
+        </Text>
+        {event.location && (
+          <Text style={[styles.dayEventLocation, { color: colors.textSecondary }]}>{event.location}</Text>
+        )}
                     </TouchableOpacity>
                   ))}
               </View>
@@ -221,47 +320,51 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
     return (
       <Agenda
+        style={{ backgroundColor: colors.background }}
         items={agendaItems}
         selected={format(selectedDate, 'yyyy-MM-dd')}
-        renderItem={(item) => (
-          <TouchableOpacity
-            style={[styles.agendaItem, { backgroundColor: item.color + '20', borderLeftColor: item.color }]}
-            onPress={() => onEventPress(item)}
-          >
-            <Text style={styles.agendaItemTitle}>{item.title}</Text>
-            <Text style={styles.agendaItemTime}>
-              {format(item.startDate, 'HH:mm')} - {format(item.endDate, 'HH:mm')}
-            </Text>
-            {item.location && (
-              <Text style={styles.agendaItemLocation}>{item.location}</Text>
-            )}
-          </TouchableOpacity>
-        )}
+        renderItem={(item: any) => {
+          const ev = item as Event;
+          return (
+            <TouchableOpacity
+              style={[styles.agendaItem, { backgroundColor: ev.color + '20', borderLeftColor: ev.color }]}
+              onPress={() => onEventPress(ev)}
+            >
+              <Text style={styles.agendaItemTitle}>{ev.title}</Text>
+              <Text style={styles.agendaItemTime}>
+                {format(ev.startDate, 'HH:mm')} - {format(ev.endDate, 'HH:mm')}
+              </Text>
+              {ev.location && (
+                <Text style={styles.agendaItemLocation}>{ev.location}</Text>
+              )}
+            </TouchableOpacity>
+          );
+        }}
         renderEmptyDate={() => (
           <View style={styles.emptyDate}>
             <Text style={styles.emptyDateText}>Aucun événement</Text>
           </View>
         )}
-        rowHasChanged={(r1, r2) => r1.id !== r2.id}
+        rowHasChanged={(r1: any, r2: any) => (r1 as Event).id !== (r2 as Event).id}
         theme={{
-          backgroundColor: '#ffffff',
-          calendarBackground: '#ffffff',
-          textSectionTitleColor: '#b6c1cd',
-          selectedDayBackgroundColor: '#4285F4',
-          selectedDayTextColor: '#ffffff',
-          todayTextColor: '#4285F4',
-          dayTextColor: '#2d4150',
-          textDisabledColor: '#d9e1e8',
-          dotColor: '#00adf5',
-          selectedDotColor: '#ffffff',
-          arrowColor: '#4285F4',
-          disabledArrowColor: '#d9e1e8',
-          monthTextColor: '#2d4150',
-          indicatorColor: '#4285F4',
-          agendaDayTextColor: '#2d4150',
-          agendaDayNumColor: '#2d4150',
-          agendaTodayColor: '#4285F4',
-          agendaKnobColor: '#4285F4',
+          backgroundColor: colors.background,
+          calendarBackground: colors.background,
+          textSectionTitleColor: colors.textSecondary,
+          selectedDayBackgroundColor: colors.selected,
+          selectedDayTextColor: colors.selectedText,
+          todayTextColor: colors.today,
+          dayTextColor: colors.text,
+          textDisabledColor: colors.textDisabled,
+          dotColor: colors.eventDot,
+          selectedDotColor: colors.eventSelectedDot,
+          arrowColor: colors.primary,
+          disabledArrowColor: colors.textDisabled,
+          monthTextColor: colors.text,
+          indicatorColor: colors.primary,
+          agendaDayTextColor: colors.text,
+          agendaDayNumColor: colors.text,
+          agendaTodayColor: colors.today,
+          agendaKnobColor: colors.primary,
         }}
       />
     );
@@ -272,29 +375,86 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const months = Array.from({ length: 12 }, (_, i) => new Date(currentYear, i, 1));
 
     return (
-      <ScrollView style={styles.yearView}>
-        <Text style={styles.yearTitle}>{currentYear}</Text>
+      <ScrollView style={[styles.yearView, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+        <View style={[styles.yearHeader, { backgroundColor: colors.accentLight }]}>
+          <TouchableOpacity
+            style={[styles.yearNavButton, { backgroundColor: colors.card }]}
+            onPress={() => {
+              const prevYear = new Date(currentYear - 1, 0, 1);
+              setSelectedDate(prevYear);
+            }}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.primary} />
+          </TouchableOpacity>
+          
+          <Text style={[styles.yearTitle, { color: colors.text }]}>{currentYear}</Text>
+          
+          <TouchableOpacity
+            style={[styles.yearNavButton, { backgroundColor: colors.card }]}
+            onPress={() => {
+              const nextYear = new Date(currentYear + 1, 0, 1);
+              setSelectedDate(nextYear);
+            }}
+          >
+            <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        
         <View style={styles.monthsGrid}>
           {months.map((month, index) => {
             const monthStart = startOfMonth(month);
             const monthEnd = endOfMonth(month);
             const monthEvents = getEventsByDateRange(monthStart, monthEnd);
+            const isCurrentMonth = month.getMonth() === new Date().getMonth() && month.getFullYear() === new Date().getFullYear();
+            const isSelectedMonth = month.getMonth() === selectedDate.getMonth() && month.getFullYear() === selectedDate.getFullYear();
             
             return (
               <TouchableOpacity
                 key={index}
-                style={styles.yearMonth}
+                style={[
+                  styles.yearMonth,
+                  { backgroundColor: colors.card },
+                  isCurrentMonth && { backgroundColor: colors.accent, borderColor: colors.primary, borderWidth: 2 },
+                  isSelectedMonth && { backgroundColor: colors.selected },
+                ]}
                 onPress={() => {
                   setSelectedDate(month);
+                  // Changer automatiquement vers la vue mois quand on sélectionne un mois
+                  const { setCurrentView } = useEventStore.getState();
+                  setCurrentView('month');
                   onDatePress(month);
                 }}
               >
-                <Text style={styles.yearMonthName}>
-                  {format(month, 'MMMM', { locale: fr })}
+                <Text style={[
+                  styles.yearMonthName,
+                  { color: colors.text },
+                  isCurrentMonth && { color: colors.primary, fontWeight: 'bold' },
+                  isSelectedMonth && { color: colors.selectedText, fontWeight: 'bold' },
+                ]}>
+                  {format(month, 'MMM', { locale: fr })}
                 </Text>
-                <Text style={styles.yearMonthEvents}>
-                  {monthEvents.length} événement{monthEvents.length !== 1 ? 's' : ''}
-                </Text>
+                <View style={styles.yearMonthEventsContainer}>
+                  {monthEvents.length > 0 ? (
+                    <View style={styles.yearMonthEventsDots}>
+                      {monthEvents.slice(0, 3).map((event, eventIndex) => (
+                        <View
+                          key={eventIndex}
+                          style={[
+                            styles.yearMonthEventDot,
+                            { backgroundColor: event.color }
+                          ]}
+                        />
+                      ))}
+                      {monthEvents.length > 3 && (
+                        <Text style={[styles.yearMonthEventsCount, { color: colors.textSecondary }]}>
+                          +{monthEvents.length - 3}
+                        </Text>
+                      )}
+                    </View>
+                  ) : (
+                    <Text style={[styles.yearMonthNoEvents, { color: colors.textSecondary }]}>Aucun événement</Text>
+                  )}
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -321,7 +481,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {renderCurrentView()}
     </View>
   );
@@ -330,17 +490,24 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
   weekView: {
     flex: 1,
   },
   weekHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 10,
-    backgroundColor: '#f8f9fa',
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+  },
+  weekNavButton: {
+    padding: 8,
+    borderRadius: 8,
+    marginHorizontal: 8,
+  },
+  weekDaysContainer: {
+    flex: 1,
+    flexDirection: 'row',
   },
   weekDay: {
     flex: 1,
@@ -354,17 +521,12 @@ const styles = StyleSheet.create({
   },
   weekDayName: {
     fontSize: 12,
-    color: '#6c757d',
     textTransform: 'uppercase',
   },
   weekDayNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2d4150',
     marginTop: 2,
-  },
-  selectedWeekDayNumber: {
-    color: '#ffffff',
   },
   weekEventsContainer: {
     flex: 1,
@@ -396,14 +558,11 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     padding: 16,
-    backgroundColor: '#f8f9fa',
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
   },
   dayTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#2d4150',
     textAlign: 'center',
   },
   dayEventsContainer: {
@@ -413,13 +572,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     minHeight: 60,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f3f4',
   },
   hourLabel: {
     width: 60,
     padding: 8,
     fontSize: 12,
-    color: '#6c757d',
     textAlign: 'center',
   },
   hourContent: {
@@ -435,20 +592,16 @@ const styles = StyleSheet.create({
   dayEventTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#2d4150',
     marginBottom: 2,
   },
   dayEventTime: {
     fontSize: 12,
-    color: '#6c757d',
     marginBottom: 2,
   },
   dayEventLocation: {
     fontSize: 12,
-    color: '#6c757d',
   },
   agendaItem: {
-    backgroundColor: '#ffffff',
     flex: 1,
     borderRadius: 8,
     padding: 12,
@@ -459,17 +612,14 @@ const styles = StyleSheet.create({
   agendaItemTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2d4150',
     marginBottom: 4,
   },
   agendaItemTime: {
     fontSize: 12,
-    color: '#6c757d',
     marginBottom: 2,
   },
   agendaItemLocation: {
     fontSize: 12,
-    color: '#6c757d',
   },
   emptyDate: {
     height: 15,
@@ -478,7 +628,6 @@ const styles = StyleSheet.create({
   },
   emptyDateText: {
     fontSize: 14,
-    color: '#6c757d',
     textAlign: 'center',
   },
   yearView: {
@@ -488,7 +637,6 @@ const styles = StyleSheet.create({
   yearTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#2d4150',
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -499,7 +647,6 @@ const styles = StyleSheet.create({
   },
   yearMonth: {
     width: '48%',
-    backgroundColor: '#f8f9fa',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
@@ -508,12 +655,57 @@ const styles = StyleSheet.create({
   yearMonthName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2d4150',
     marginBottom: 4,
     textTransform: 'capitalize',
   },
   yearMonthEvents: {
     fontSize: 12,
-    color: '#6c757d',
+  },
+  yearHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  yearNavButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
+  currentYearMonth: {
+    borderWidth: 2,
+  },
+  selectedYearMonth: {
+  },
+  currentYearMonthName: {
+    fontWeight: 'bold',
+  },
+  selectedYearMonthName: {
+    fontWeight: 'bold',
+  },
+  yearMonthEventsContainer: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  yearMonthEventsDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  yearMonthEventDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginHorizontal: 1,
+  },
+  yearMonthEventsCount: {
+    fontSize: 10,
+    marginLeft: 4,
+  },
+  yearMonthNoEvents: {
+    fontSize: 10,
+    fontStyle: 'italic',
   },
 });
